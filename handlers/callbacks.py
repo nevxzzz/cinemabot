@@ -83,7 +83,7 @@ def register_callback_handler(app: Client):
             lines = ["🔍 *Seus resultados:*\n"]
             for i, r in enumerate(results, 1):
                 emoji = "📺" if r.is_series else "🎬"
-                lines.append(f"{i}\\. {emoji} *{esc(r.title)}* \\({esc(r.release_year)}\\) — ⭐ {r.vote_average:.1f}")
+                lines.append(f"{i}. {emoji} *{esc(r.title)}* ({esc(r.release_year)}) — ⭐ {r.vote_average:.1f}")
             await _edit_text_or_caption(query, "\n".join(lines), search_result_keyboard(results))
 
         # ── Detalhe de mídia (filme ou série) ────────────────────────

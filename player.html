@@ -31,7 +31,6 @@
       display: flex; align-items: center; gap: 10px;
       padding: 10px 14px; background: var(--surface);
       border-bottom: 1px solid var(--border); flex-shrink: 0; min-height: 52px;
-      transition: all 0.3s;
     }
     #header .logo { font-size: 20px; }
     #title-wrap { flex: 1; overflow: hidden; }
@@ -43,12 +42,6 @@
     #close-btn {
       background: none; border: none; color: var(--muted);
       font-size: 22px; cursor: pointer; padding: 4px; line-height: 1; flex-shrink: 0;
-    }
-
-    /* Fullscreen btn no header */
-    #fs-btn {
-      background: none; border: none; color: var(--muted);
-      font-size: 18px; cursor: pointer; padding: 4px; line-height: 1; flex-shrink: 0;
     }
 
     /* Player */
@@ -74,7 +67,6 @@
     #bottom-bar {
       background: var(--surface); border-top: 1px solid var(--border);
       padding: 8px 12px; display: flex; gap: 8px; flex-shrink: 0;
-      transition: all 0.3s;
     }
 
     .provider-btn {
@@ -117,16 +109,6 @@
       white-space: nowrap; z-index: 30;
     }
     #toast.show { opacity: 1; }
-
-    /* Fullscreen nativo do browser (fallback) */
-    #player-wrap:fullscreen,
-    #player-wrap:-webkit-full-screen {
-      width: 100vw; height: 100vh;
-    }
-    #player-wrap:fullscreen #player-frame,
-    #player-wrap:-webkit-full-screen #player-frame {
-      width: 100%; height: 100%;
-    }
   </style>
 </head>
 <body>
@@ -138,7 +120,6 @@
       <div id="media-title">Carregando…</div>
       <div id="media-sub"></div>
     </div>
-    <button id="fs-btn" title="Tela cheia" onclick="toggleFullscreen()">⛶</button>
     <button id="close-btn" title="Fechar">✕</button>
   </div>
 
@@ -226,57 +207,18 @@
   let autoFallbackDone = false;
   let loadTimer        = null;
   let activePingCtrl   = null;
-  let isFullscreen     = false;
 
-  // ── Fullscreen ────────────────────────────────────────────────────
-  function toggleFullscreen() {
-    // 1ª opção: API nativa do Telegram Mini App (mais confiável)
-    if (tg && tg.requestFullscreen) {
-      if (isFullscreen) {
-        tg.exitFullscreen?.();
-        isFullscreen = false;
-        document.getElementById("fs-btn").textContent = "⛶";
-      } else {
-        tg.requestFullscreen();
-        isFullscreen = true;
-        document.getElementById("fs-btn").textContent = "✕ Sair";
-      }
-      return;
-    }
-
-    // Fallback: fullscreen nativo do browser na div do player
-    const wrap = document.getElementById("player-wrap");
-    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
-      (wrap.requestFullscreen || wrap.webkitRequestFullscreen || wrap.mozRequestFullScreen).call(wrap);
-    } else {
-      (document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen).call(document);
-    }
-  }
-
-  // Atualiza ícone ao sair de fullscreen pelo gesto do sistema (ex: botão voltar)
+  // ── Fullscreen via Telegram Mini App ──────────────────────────────
+  // O Telegram só permite requestFullscreen() em resposta a gesto do usuário.
+  // Quando o usuário clica no botão de fullscreen DENTRO do player (iframe),
+  // o evento fullscreenchange sobe para cá e a gente aciona o tg.requestFullscreen().
   document.addEventListener("fullscreenchange", () => {
-    const inFs = !!document.fullscreenElement;
-    document.getElementById("fs-btn").textContent = inFs ? "✕ Sair" : "⛶";
+    if (document.fullscreenElement && tg?.requestFullscreen) {
+      tg.requestFullscreen();
+    }
   });
   document.addEventListener("webkitfullscreenchange", () => {
-    const inFs = !!document.webkitFullscreenElement;
-    document.getElementById("fs-btn").textContent = inFs ? "✕ Sair" : "⛶";
-  });
-
-  // Escuta eventos do Telegram para sincronizar estado
-  if (tg) {
-    tg.onEvent?.("fullscreen_changed", (params) => {
-      isFullscreen = params?.is_fullscreen ?? false;
-      document.getElementById("fs-btn").textContent = isFullscreen ? "✕ Sair" : "⛶";
-    });
-  }
-
-  // Intercepta tentativa de fullscreen iniciada DENTRO do iframe
-  // (o player clica em fullscreen e o evento sobe para cá)
-  document.addEventListener("fullscreenchange", (e) => {
-    // Se o elemento em fullscreen for o iframe ou um elemento interno a ele,
-    // pedimos fullscreen do Mini App do Telegram também
-    if (document.fullscreenElement && tg?.requestFullscreen) {
+    if (document.webkitFullscreenElement && tg?.requestFullscreen) {
       tg.requestFullscreen();
     }
   });
