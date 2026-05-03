@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>CinemaBot Player</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js?2"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -46,7 +46,55 @@
 
     /* Player */
     #player-wrap { flex: 1; position: relative; background: #000; overflow: hidden; }
-    #player-frame { width: 100%; height: 100%; border: none; display: block; }
+
+    #player-frame {
+      width: 100%; height: 100%; border: none; display: block;
+      transition: all 0.25s ease;
+    }
+
+    /* Pseudo fullscreen — iframe cobre tudo via CSS */
+    #player-frame.pseudo-fs {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      z-index: 9999;
+    }
+
+    /* Botão flutuante de fullscreen */
+    #fs-fab {
+      position: absolute;
+      bottom: 14px; right: 14px;
+      width: 42px; height: 42px;
+      border-radius: 50%;
+      background: rgba(0,0,0,0.65);
+      border: 1.5px solid rgba(255,255,255,0.18);
+      color: #fff;
+      font-size: 18px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      z-index: 100;
+      backdrop-filter: blur(4px);
+      transition: background 0.2s;
+    }
+    #fs-fab:active { background: rgba(229,9,20,0.7); }
+
+    /* Botão de sair do fullscreen — aparece só no pseudo-fs */
+    #exit-fs-btn {
+      display: none;
+      position: fixed;
+      top: 14px; right: 14px;
+      z-index: 10000;
+      background: rgba(0,0,0,0.7);
+      border: 1.5px solid rgba(255,255,255,0.2);
+      color: #fff;
+      font-size: 13px; font-weight: 700;
+      padding: 8px 14px;
+      border-radius: 20px;
+      cursor: pointer;
+      backdrop-filter: blur(4px);
+    }
+    body.in-pseudo-fs #exit-fs-btn { display: flex; align-items: center; gap: 6px; }
+    body.in-pseudo-fs #fs-fab { display: none; }
 
     /* Loading */
     #loading {
@@ -68,7 +116,6 @@
       background: var(--surface); border-top: 1px solid var(--border);
       padding: 8px 12px; display: flex; gap: 8px; flex-shrink: 0;
     }
-
     .provider-btn {
       flex: 1; padding: 10px 6px; border-radius: var(--radius);
       border: 1.5px solid var(--border); background: transparent;
@@ -102,11 +149,11 @@
 
     /* Toast */
     #toast {
-      position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%);
+      position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
       background: rgba(229,9,20,0.92); color: #fff; padding: 8px 16px;
       border-radius: 20px; font-size: 12px; font-weight: 600;
       opacity: 0; transition: opacity 0.4s; pointer-events: none;
-      white-space: nowrap; z-index: 30;
+      white-space: nowrap; z-index: 10001;
     }
     #toast.show { opacity: 1; }
   </style>
@@ -134,6 +181,7 @@
       <p>Este título não foi encontrado em nenhum player disponível.</p>
       <button id="try-alt-btn">Tentar Player Alternativo</button>
     </div>
+
     <iframe
       id="player-frame"
       allow="autoplay *; encrypted-media *; picture-in-picture *; fullscreen *; clipboard-write *; accelerometer *; gyroscope *"
@@ -142,9 +190,14 @@
       mozallowfullscreen
       frameborder="0"
       scrolling="no"
-      style="width:100%;height:100%;border:0;"
     ></iframe>
+
+    <!-- Botão flutuante de tela cheia (fora do iframe, sob nosso controle) -->
+    <button id="fs-fab" title="Tela cheia">⛶</button>
   </div>
+
+  <!-- Botão de sair da tela cheia (aparece só no modo fullscreen) -->
+  <button id="exit-fs-btn">✕ Sair da tela cheia</button>
 
   <div id="bottom-bar">
     <button class="provider-btn active" data-provider="warezcdn" onclick="switchProvider('warezcdn')">
@@ -166,6 +219,8 @@
   if (tg) {
     tg.ready();
     tg.expand();
+    // Pede fullscreen do Mini App logo de início (ocupa tela toda, some barra do Telegram)
+    if (tg.requestFullscreen) tg.requestFullscreen();
     tg.setHeaderColor("#1a1a1a");
     tg.setBackgroundColor("#0d0d0d");
   }
@@ -207,21 +262,50 @@
   let autoFallbackDone = false;
   let loadTimer        = null;
   let activePingCtrl   = null;
+  let pseudoFs         = false;
 
-  // ── Fullscreen via Telegram Mini App ──────────────────────────────
-  // O Telegram só permite requestFullscreen() em resposta a gesto do usuário.
-  // Quando o usuário clica no botão de fullscreen DENTRO do player (iframe),
-  // o evento fullscreenchange sobe para cá e a gente aciona o tg.requestFullscreen().
-  document.addEventListener("fullscreenchange", () => {
-    if (document.fullscreenElement && tg?.requestFullscreen) {
-      tg.requestFullscreen();
-    }
+  // ── Pseudo Fullscreen ─────────────────────────────────────────────
+  const frame     = document.getElementById("player-frame");
+  const fsFab     = document.getElementById("fs-fab");
+  const exitFsBtn = document.getElementById("exit-fs-btn");
+
+  function enterPseudoFs() {
+    pseudoFs = true;
+    frame.classList.add("pseudo-fs");
+    document.body.classList.add("in-pseudo-fs");
+
+    // Trava em landscape via Mini Apps 2.0
+    if (tg?.lockOrientation) tg.lockOrientation("landscape");
+  }
+
+  function exitPseudoFs() {
+    pseudoFs = false;
+    frame.classList.remove("pseudo-fs");
+    document.body.classList.remove("in-pseudo-fs");
+
+    // Volta para portrait
+    if (tg?.unlockOrientation) tg.unlockOrientation();
+  }
+
+  fsFab.addEventListener("click", () => {
+    if (!pseudoFs) enterPseudoFs();
   });
-  document.addEventListener("webkitfullscreenchange", () => {
-    if (document.webkitFullscreenElement && tg?.requestFullscreen) {
-      tg.requestFullscreen();
-    }
+
+  exitFsBtn.addEventListener("click", () => {
+    exitPseudoFs();
   });
+
+  // Sai do pseudo-fs ao apertar botão voltar do Android
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && pseudoFs) exitPseudoFs();
+  });
+  if (tg) {
+    tg.BackButton?.show();
+    tg.BackButton?.onClick(() => {
+      if (pseudoFs) { exitPseudoFs(); }
+      else { tg.close(); }
+    });
+  }
 
   // ── UI helpers ────────────────────────────────────────────────────
   function showLoading(msg) {
@@ -277,7 +361,7 @@
     setActiveBtn(provider);
     showLoading("Carregando player…");
     clearTimeout(loadTimer);
-    document.getElementById("player-frame").src = url;
+    frame.src = url;
     loadTimer = setTimeout(() => {
       if (!document.getElementById("loading").classList.contains("hidden"))
         hideLoading();
@@ -311,7 +395,7 @@
   }
 
   // ── Eventos ───────────────────────────────────────────────────────
-  document.getElementById("player-frame").addEventListener("load", () => {
+  frame.addEventListener("load", () => {
     clearTimeout(loadTimer);
     hideLoading();
   });
@@ -324,6 +408,7 @@
 
   document.getElementById("close-btn").addEventListener("click", () => {
     if (tg) tg.close();
+    else window.close();
   });
 
   // ── Init ──────────────────────────────────────────────────────────
