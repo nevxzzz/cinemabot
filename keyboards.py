@@ -12,7 +12,7 @@ _CB_MAX = 64
 
 # ⚠️  Cole aqui a URL onde você hospedou o player.html
 # Opção gratuita: arraste o arquivo em https://app.netlify.com/drop
-PLAYER_BASE_URL = "https://nevxzzz.github.io/Meu-player/player.html"
+PLAYER_BASE_URL = "https://nevxzzz.github.io/cinemabot/player.html"
 
 
 def _player_web_app(
