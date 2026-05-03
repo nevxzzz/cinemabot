@@ -86,17 +86,17 @@
     #exit-fs-btn {
       display: none;
       position: fixed;
-      top: calc(14px + env(safe-area-inset-top, 0px));
-      right: calc(14px + env(safe-area-inset-right, 0px));
+      bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+      right: calc(16px + env(safe-area-inset-right, 0px));
       z-index: 10000;
-      background: rgba(0,0,0,0.7);
-      border: 1.5px solid rgba(255,255,255,0.2);
+      background: rgba(0,0,0,0.75);
+      border: 1.5px solid rgba(255,255,255,0.25);
       color: #fff;
       font-size: 13px; font-weight: 700;
-      padding: 8px 14px;
+      padding: 10px 16px;
       border-radius: 20px;
       cursor: pointer;
-      backdrop-filter: blur(4px);
+      backdrop-filter: blur(6px);
     }
     body.in-pseudo-fs #exit-fs-btn { display: flex; align-items: center; gap: 6px; }
     body.in-pseudo-fs #fs-fab { display: none; }
@@ -224,10 +224,12 @@
   if (tg) {
     tg.ready();
     tg.expand();
-    // Pede fullscreen do Mini App logo de início (ocupa tela toda, some barra do Telegram)
+    tg.disableVerticalSwipes?.();
     if (tg.requestFullscreen) tg.requestFullscreen();
     tg.setHeaderColor("#1a1a1a");
     tg.setBackgroundColor("#0d0d0d");
+    // Esconde o botão voltar nativo do Telegram — usamos o nosso próprio
+    tg.BackButton?.hide();
   }
 
   // ── Parâmetros da URL ─────────────────────────────────────────────
@@ -300,17 +302,10 @@
     exitPseudoFs();
   });
 
-  // Sai do pseudo-fs ao apertar botão voltar do Android
+  // Botão voltar do Android no pseudo-fs sai do fullscreen
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && pseudoFs) exitPseudoFs();
   });
-  if (tg) {
-    tg.BackButton?.show();
-    tg.BackButton?.onClick(() => {
-      if (pseudoFs) { exitPseudoFs(); }
-      else { tg.close(); }
-    });
-  }
 
   // ── UI helpers ────────────────────────────────────────────────────
   function showLoading(msg) {
