@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>CinemaBot Player</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0d0d0d;
+      --surface: #1a1a1a;
+      --accent:  #e50914;
+      --text:    #f0f0f0;
+      --muted:   #888;
+      --border:  #2a2a2a;
+      --radius:  10px;
+    }
+
+    html, body {
+      height: 100%; background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      overflow: hidden;
+    }
+
+    #app { display: flex; flex-direction: column; height: 100vh; }
+
+    /* Header */
+    #header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px; background: var(--surface);
+      border-bottom: 1px solid var(--border); flex-shrink: 0; min-height: 52px;
+      transition: all 0.3s;
+    }
+    #header .logo { font-size: 20px; }
+    #title-wrap { flex: 1; overflow: hidden; }
+    #media-title {
+      font-size: 14px; font-weight: 700;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    #media-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    #close-btn {
+      background: none; border: none; color: var(--muted);
+      font-size: 22px; cursor: pointer; padding: 4px; line-height: 1; flex-shrink: 0;
+    }
+
+    /* Fullscreen btn no header */
+    #fs-btn {
+      background: none; border: none; color: var(--muted);
+      font-size: 18px; cursor: pointer; padding: 4px; line-height: 1; flex-shrink: 0;
+    }
+
+    /* Player */
+    #player-wrap { flex: 1; position: relative; background: #000; overflow: hidden; }
+    #player-frame { width: 100%; height: 100%; border: none; display: block; }
+
+    /* Loading */
+    #loading {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; background: #000;
+      gap: 16px; z-index: 10; transition: opacity 0.3s;
+    }
+    #loading.hidden { opacity: 0; pointer-events: none; }
+    .spinner {
+      width: 44px; height: 44px; border: 3px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading-msg { color: var(--muted); font-size: 13px; text-align: center; padding: 0 20px; }
+
+    /* Bottom bar */
+    #bottom-bar {
+      background: var(--surface); border-top: 1px solid var(--border);
+      padding: 8px 12px; display: flex; gap: 8px; flex-shrink: 0;
+      transition: all 0.3s;
+    }
+
+    .provider-btn {
+      flex: 1; padding: 10px 6px; border-radius: var(--radius);
+      border: 1.5px solid var(--border); background: transparent;
+      color: var(--text); font-size: 12px; font-weight: 600; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      gap: 5px; transition: all 0.2s;
+    }
+    .provider-btn.active {
+      border-color: var(--accent);
+      background: rgba(229,9,20,0.15); color: #fff;
+    }
+    .provider-btn:not(.active):hover { border-color: #444; background: rgba(255,255,255,0.05); }
+    .provider-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); display: none; }
+    .provider-btn.active .provider-dot { display: block; }
+
+    /* Error */
+    #error-screen {
+      display: none; position: absolute; inset: 0;
+      flex-direction: column; align-items: center; justify-content: center;
+      background: #000; gap: 12px; padding: 24px; text-align: center; z-index: 20;
+    }
+    #error-screen.visible { display: flex; }
+    #error-screen .icon { font-size: 48px; }
+    #error-screen h3 { font-size: 16px; }
+    #error-screen p { font-size: 13px; color: var(--muted); }
+    #try-alt-btn {
+      margin-top: 8px; padding: 10px 24px; background: var(--accent);
+      color: #fff; border: none; border-radius: var(--radius);
+      font-size: 13px; font-weight: 700; cursor: pointer;
+    }
+
+    /* Toast */
+    #toast {
+      position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%);
+      background: rgba(229,9,20,0.92); color: #fff; padding: 8px 16px;
+      border-radius: 20px; font-size: 12px; font-weight: 600;
+      opacity: 0; transition: opacity 0.4s; pointer-events: none;
+      white-space: nowrap; z-index: 30;
+    }
+    #toast.show { opacity: 1; }
+
+    /* Fullscreen nativo do browser (fallback) */
+    #player-wrap:fullscreen,
+    #player-wrap:-webkit-full-screen {
+      width: 100vw; height: 100vh;
+    }
+    #player-wrap:fullscreen #player-frame,
+    #player-wrap:-webkit-full-screen #player-frame {
+      width: 100%; height: 100%;
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <div id="header">
+    <span class="logo">🎬</span>
+    <div id="title-wrap">
+      <div id="media-title">Carregando…</div>
+      <div id="media-sub"></div>
+    </div>
+    <button id="fs-btn" title="Tela cheia" onclick="toggleFullscreen()">⛶</button>
+    <button id="close-btn" title="Fechar">✕</button>
+  </div>
+
+  <div id="player-wrap">
+    <div id="loading">
+      <div class="spinner"></div>
+      <p id="loading-msg">Verificando disponibilidade…</p>
+    </div>
+    <div id="error-screen">
+      <div class="icon">😕</div>
+      <h3>Conteúdo indisponível</h3>
+      <p>Este título não foi encontrado em nenhum player disponível.</p>
+      <button id="try-alt-btn">Tentar Player Alternativo</button>
+    </div>
+    <iframe
+      id="player-frame"
+      allow="autoplay *; encrypted-media *; picture-in-picture *; fullscreen *; clipboard-write *; accelerometer *; gyroscope *"
+      allowfullscreen
+      webkitallowfullscreen
+      mozallowfullscreen
+      frameborder="0"
+      scrolling="no"
+      style="width:100%;height:100%;border:0;"
+    ></iframe>
+  </div>
+
+  <div id="bottom-bar">
+    <button class="provider-btn active" data-provider="warezcdn" onclick="switchProvider('warezcdn')">
+      <span class="provider-dot"></span>
+      🎬 WarezCDN
+    </button>
+    <button class="provider-btn" data-provider="superflix" onclick="switchProvider('superflix')">
+      <span class="provider-dot"></span>
+      📡 SuperFlix
+    </button>
+  </div>
+
+  <div id="toast"></div>
+
+</div>
+
+<script>
+  const tg = window.Telegram?.WebApp;
+  if (tg) {
+    tg.ready();
+    tg.expand();
+    tg.setHeaderColor("#1a1a1a");
+    tg.setBackgroundColor("#0d0d0d");
+  }
+
+  // ── Parâmetros da URL ─────────────────────────────────────────────
+  const params    = new URLSearchParams(window.location.search);
+  const mediaType = params.get("type")  || "movie";
+  const tmdbId    = params.get("id")    || "";
+  const season    = params.get("s")     || "1";
+  const episode   = params.get("e")     || "1";
+  const title     = decodeURIComponent(params.get("title") || "");
+  const subInfo   = mediaType === "tv"
+    ? `T${season.padStart(2,"0")} · E${episode.padStart(2,"0")}`
+    : "";
+
+  document.getElementById("media-title").textContent = title || "Player";
+  document.getElementById("media-sub").textContent   = subInfo;
+
+  // ── Providers ─────────────────────────────────────────────────────
+  const PROVIDERS = {
+    warezcdn: {
+      label: "WarezCDN",
+      buildUrl() {
+        if (mediaType === "movie") return `https://warezcdn.site/filme/${tmdbId}`;
+        return `https://warezcdn.site/serie/${tmdbId}/${season}/${episode}`;
+      }
+    },
+    superflix: {
+      label: "SuperFlix",
+      buildUrl() {
+        if (mediaType === "movie") return `https://superflixapi.online/filme/${tmdbId}`;
+        return `https://superflixapi.online/serie/${tmdbId}/${season}/${episode}`;
+      }
+    }
+  };
+
+  // ── Estado ────────────────────────────────────────────────────────
+  let currentProvider  = "warezcdn";
+  let autoFallbackDone = false;
+  let loadTimer        = null;
+  let activePingCtrl   = null;
+  let isFullscreen     = false;
+
+  // ── Fullscreen ────────────────────────────────────────────────────
+  function toggleFullscreen() {
+    // 1ª opção: API nativa do Telegram Mini App (mais confiável)
+    if (tg && tg.requestFullscreen) {
+      if (isFullscreen) {
+        tg.exitFullscreen?.();
+        isFullscreen = false;
+        document.getElementById("fs-btn").textContent = "⛶";
+      } else {
+        tg.requestFullscreen();
+        isFullscreen = true;
+        document.getElementById("fs-btn").textContent = "✕ Sair";
+      }
+      return;
+    }
+
+    // Fallback: fullscreen nativo do browser na div do player
+    const wrap = document.getElementById("player-wrap");
+    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+      (wrap.requestFullscreen || wrap.webkitRequestFullscreen || wrap.mozRequestFullScreen).call(wrap);
+    } else {
+      (document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen).call(document);
+    }
+  }
+
+  // Atualiza ícone ao sair de fullscreen pelo gesto do sistema (ex: botão voltar)
+  document.addEventListener("fullscreenchange", () => {
+    const inFs = !!document.fullscreenElement;
+    document.getElementById("fs-btn").textContent = inFs ? "✕ Sair" : "⛶";
+  });
+  document.addEventListener("webkitfullscreenchange", () => {
+    const inFs = !!document.webkitFullscreenElement;
+    document.getElementById("fs-btn").textContent = inFs ? "✕ Sair" : "⛶";
+  });
+
+  // Escuta eventos do Telegram para sincronizar estado
+  if (tg) {
+    tg.onEvent?.("fullscreen_changed", (params) => {
+      isFullscreen = params?.is_fullscreen ?? false;
+      document.getElementById("fs-btn").textContent = isFullscreen ? "✕ Sair" : "⛶";
+    });
+  }
+
+  // Intercepta tentativa de fullscreen iniciada DENTRO do iframe
+  // (o player clica em fullscreen e o evento sobe para cá)
+  document.addEventListener("fullscreenchange", (e) => {
+    // Se o elemento em fullscreen for o iframe ou um elemento interno a ele,
+    // pedimos fullscreen do Mini App do Telegram também
+    if (document.fullscreenElement && tg?.requestFullscreen) {
+      tg.requestFullscreen();
+    }
+  });
+
+  // ── UI helpers ────────────────────────────────────────────────────
+  function showLoading(msg) {
+    document.getElementById("loading-msg").textContent = msg || "Carregando player…";
+    document.getElementById("loading").classList.remove("hidden");
+    document.getElementById("error-screen").classList.remove("visible");
+  }
+  function hideLoading() {
+    document.getElementById("loading").classList.add("hidden");
+  }
+  function showError() {
+    hideLoading();
+    document.getElementById("error-screen").classList.add("visible");
+  }
+  function setActiveBtn(provider) {
+    document.querySelectorAll(".provider-btn").forEach(btn =>
+      btn.classList.toggle("active", btn.dataset.provider === provider)
+    );
+  }
+  function showToast(msg, ms = 3500) {
+    const el = document.getElementById("toast");
+    el.textContent = msg;
+    el.classList.add("show");
+    setTimeout(() => el.classList.remove("show"), ms);
+  }
+
+  // ── Ping heurístico ───────────────────────────────────────────────
+  const PING_FAST_THRESHOLD = 600;
+  const PING_TIMEOUT        = 5000;
+
+  async function pingProvider(provider) {
+    const url = PROVIDERS[provider].buildUrl();
+    if (activePingCtrl) activePingCtrl.abort();
+    activePingCtrl = new AbortController();
+    const signal = activePingCtrl.signal;
+    const timer = setTimeout(() => activePingCtrl.abort(), PING_TIMEOUT);
+    try {
+      const t0 = performance.now();
+      await fetch(url, { method: "GET", mode: "no-cors", signal, cache: "no-store" });
+      clearTimeout(timer);
+      return (performance.now() - t0) >= PING_FAST_THRESHOLD;
+    } catch (e) {
+      clearTimeout(timer);
+      if (e.name === "AbortError") return null;
+      return false;
+    }
+  }
+
+  // ── Carrega iframe ────────────────────────────────────────────────
+  function doLoadIframe(provider) {
+    const url = PROVIDERS[provider].buildUrl();
+    currentProvider = provider;
+    setActiveBtn(provider);
+    showLoading("Carregando player…");
+    clearTimeout(loadTimer);
+    document.getElementById("player-frame").src = url;
+    loadTimer = setTimeout(() => {
+      if (!document.getElementById("loading").classList.contains("hidden"))
+        hideLoading();
+    }, 15000);
+  }
+
+  async function loadPlayer(provider, skipPing) {
+    if (!tmdbId) { showError(); return; }
+    if (skipPing) { doLoadIframe(provider); return; }
+
+    showLoading("Verificando disponibilidade…");
+    const available = await pingProvider(provider);
+    if (available === null) return;
+
+    if (available === false && !autoFallbackDone) {
+      const other = provider === "warezcdn" ? "superflix" : "warezcdn";
+      autoFallbackDone = true;
+      showToast(`⚠️ ${PROVIDERS[provider].label} indisponível — tentando ${PROVIDERS[other].label}…`);
+      doLoadIframe(other);
+      return;
+    }
+    if (available === false && autoFallbackDone) { showError(); return; }
+    doLoadIframe(provider);
+  }
+
+  function switchProvider(provider) {
+    if (provider === currentProvider) return;
+    autoFallbackDone = true;
+    if (activePingCtrl) activePingCtrl.abort();
+    loadPlayer(provider, true);
+  }
+
+  // ── Eventos ───────────────────────────────────────────────────────
+  document.getElementById("player-frame").addEventListener("load", () => {
+    clearTimeout(loadTimer);
+    hideLoading();
+  });
+
+  document.getElementById("try-alt-btn").addEventListener("click", () => {
+    const next = currentProvider === "warezcdn" ? "superflix" : "warezcdn";
+    autoFallbackDone = true;
+    loadPlayer(next, true);
+  });
+
+  document.getElementById("close-btn").addEventListener("click", () => {
+    if (tg) tg.close();
+  });
+
+  // ── Init ──────────────────────────────────────────────────────────
+  if (tmdbId) {
+    loadPlayer("warezcdn", false);
+  } else {
+    showError();
+  }
+</script>
+</body>
+</html>

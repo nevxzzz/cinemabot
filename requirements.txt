@@ -1,0 +1,11 @@
+# Telegram
+pyrogram==2.0.106
+TgCrypto==1.2.5
+
+# HTTP client — versão sem dependência de Rust
+httpx==0.23.3
+
+# Variáveis de ambiente — puro Python, sem Rust
+python-dotenv==1.0.1
+
+# NÃO incluir pydantic-settings (requer Rust para compilar no Android)
