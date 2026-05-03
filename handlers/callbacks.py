@@ -37,9 +37,8 @@ from handlers.search import (
 
 logger = logging.getLogger("CinemaBot.callbacks")
 
-# Cache de episódios e séries para navegação rápida
-_ep_cache: dict[int, dict] = {}   # {user_id: {(tv_id, season): [Episode]}}
-_tv_cache: dict[int, dict] = {}   # {user_id: {tv_id: MediaResult}}
+_ep_cache: dict[int, dict] = {}
+_tv_cache: dict[int, dict] = {}
 
 
 def register_callback_handler(app: Client):
@@ -50,43 +49,38 @@ def register_callback_handler(app: Client):
         uid  = query.from_user.id
         logger.info("Callback '%s' uid=%s", data, uid)
 
-        # ── noop (botões de informação como paginador) ───────────────
         if data == "noop":
             await query.answer()
             return
 
-        # ── Início ───────────────────────────────────────────────────
         if data == "start":
             try:
                 await query.message.edit_caption(
                     caption=WELCOME_TEXT,
-                    parse_mode=enums.ParseMode.MARKDOWN,
+                    parse_mode=enums.ParseMode.DISABLED,
                     reply_markup=start_keyboard(),
                 )
             except Exception:
                 await query.message.edit_text(
                     text=WELCOME_TEXT,
-                    parse_mode=enums.ParseMode.MARKDOWN,
+                    parse_mode=enums.ParseMode.DISABLED,
                     reply_markup=start_keyboard(),
                 )
 
-        # ── Ajuda ────────────────────────────────────────────────────
         elif data == "help":
             await _edit_text_or_caption(query, HELP_TEXT, back_to_start_keyboard())
 
-        # ── Voltar aos resultados de busca ───────────────────────────
         elif data == "back_results":
             results = get_user_results(uid)
             if not results:
                 await query.answer("Sessão expirada. Faça uma nova busca.", show_alert=True)
                 return
-            lines = ["🔍 *Seus resultados:*\n"]
+            lines = ["🔍 Seus resultados:\n"]
             for i, r in enumerate(results, 1):
                 emoji = "📺" if r.is_series else "🎬"
-                lines.append(f"{i}. {emoji} *{esc(r.title)}* ({esc(r.release_year)}) — ⭐ {r.vote_average:.1f}")
+                lines.append(f"{i}. {emoji} {r.title} ({r.release_year}) — ⭐ {r.vote_average:.1f}")
             await _edit_text_or_caption(query, "\n".join(lines), search_result_keyboard(results))
 
-        # ── Detalhe de mídia (filme ou série) ────────────────────────
         elif data.startswith("detail:"):
             _, media_type, media_id_str = data.split(":")
             media_id = int(media_id_str)
@@ -108,7 +102,6 @@ def register_callback_handler(app: Client):
             caption = format_media_caption(media)
             await _edit_media_or_caption(query, media.poster_url, caption, keyboard)
 
-        # ── Lista de temporadas ───────────────────────────────────────
         elif data.startswith("seasons:"):
             tv_id = int(data.split(":")[1])
             await query.answer("Buscando temporadas…")
@@ -124,7 +117,6 @@ def register_callback_handler(app: Client):
             caption = format_seasons_list(title, seasons)
             await _edit_text_or_caption(query, caption, seasons_keyboard(tv_id, seasons))
 
-        # ── Lista de episódios de uma temporada ───────────────────────
         elif data.startswith("eps:"):
             _, tv_id_str, season_str = data.split(":")
             tv_id, season_number = int(tv_id_str), int(season_str)
@@ -152,7 +144,6 @@ def register_callback_handler(app: Client):
                 episodes_keyboard(tv_id, season_number, episodes, page=1)
             )
 
-        # ── Paginação de episódios ────────────────────────────────────
         elif data.startswith("eps_page:"):
             _, tv_id_str, season_str, page_str = data.split(":")
             tv_id, season_number, page = int(tv_id_str), int(season_str), int(page_str)
@@ -168,7 +159,6 @@ def register_callback_handler(app: Client):
                 reply_markup=episodes_keyboard(tv_id, season_number, episodes, page=page)
             )
 
-        # ── Detalhe de um episódio ─────────────────────────────────
         elif data.startswith("ep_detail:"):
             _, tv_id_str, season_str, ep_str = data.split(":")
             tv_id, season_number, ep_number = int(tv_id_str), int(season_str), int(ep_str)
@@ -186,15 +176,13 @@ def register_callback_handler(app: Client):
             series_title = tv.title if tv else "Série"
 
             caption = format_episode_detail(series_title, season_number, ep)
-            series_title_ep = (tv.title if tv else "")
-            keyboard = ep_detail_keyboard(tv_id, season_number, ep_number, series_title_ep)
+            keyboard = ep_detail_keyboard(tv_id, season_number, ep_number, series_title)
 
             if ep.still_url:
                 await _edit_media_or_caption(query, ep.still_url, caption, keyboard)
             else:
                 await _edit_text_or_caption(query, caption, keyboard)
 
-        # ── Trending — exibição inicial ───────────────────────────────
         elif data.startswith("trending:"):
             media_type = data.split(":")[1]
             await query.answer("Carregando…")
@@ -213,7 +201,6 @@ def register_callback_handler(app: Client):
                 trending_keyboard(results, media_type, page=1)
             )
 
-        # ── Trending — paginação ──────────────────────────────────────
         elif data.startswith("trending_page:"):
             _, media_type, page_str = data.split(":")
             page = int(page_str)
@@ -232,21 +219,18 @@ def register_callback_handler(app: Client):
             await query.answer("Ação desconhecida.", show_alert=True)
 
 
-# ─── Helpers de edição ──────────────────────────────────────────────
-
 async def _edit_text_or_caption(query: CallbackQuery, text: str, keyboard) -> None:
-    """Edita a mensagem tentando caption primeiro, depois text."""
     try:
         await query.message.edit_caption(
             caption=text,
-            parse_mode=enums.ParseMode.MARKDOWN,
+            parse_mode=enums.ParseMode.DISABLED,
             reply_markup=keyboard,
         )
     except Exception:
         try:
             await query.message.edit_text(
                 text=text,
-                parse_mode=enums.ParseMode.MARKDOWN,
+                parse_mode=enums.ParseMode.DISABLED,
                 reply_markup=keyboard,
             )
         except Exception as exc:
@@ -259,14 +243,13 @@ async def _edit_media_or_caption(
     caption: str,
     keyboard,
 ) -> None:
-    """Tenta editar com nova foto; se falhar, edita apenas a legenda."""
     if photo_url:
         try:
             await query.message.edit_media(
                 media=InputMediaPhoto(
                     media=photo_url,
                     caption=caption,
-                    parse_mode=enums.ParseMode.MARKDOWN,
+                    parse_mode=enums.ParseMode.DISABLED,
                 ),
                 reply_markup=keyboard,
             )

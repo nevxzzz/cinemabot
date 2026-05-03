@@ -48,7 +48,7 @@ def register_search_handler(app: Client):
     async def search_by_command(client: Client, message: Message):
         parts = message.text.split(maxsplit=1)
         if len(parts) < 2:
-            await message.reply("❓ Use: `/buscar Nome do Filme`", parse_mode=enums.ParseMode.MARKDOWN)
+            await message.reply("❓ Use: /buscar Nome do Filme", parse_mode=enums.ParseMode.DISABLED)
             return
         await _execute_search(client, message, parts[1].strip())
 
@@ -77,7 +77,7 @@ async def _execute_search(client: Client, message: Message, query: str):
     if not results:
         sent = await message.reply(
             format_no_results(query),
-            parse_mode=enums.ParseMode.MARKDOWN,
+            parse_mode=enums.ParseMode.DISABLED,
         )
         track_message(user_id, message.chat.id, sent.id)
         return
@@ -86,24 +86,24 @@ async def _execute_search(client: Client, message: Message, query: str):
 
     if not available:
         sent = await message.reply(
-            f"🔍 Busca por *{esc(query)}* não encontrou títulos disponíveis nos players no momento.\n"
-            "_Tente outro título ou aguarde alguns instantes._",
-            parse_mode=enums.ParseMode.MARKDOWN,
+            f"🔍 Busca por {query} não encontrou títulos disponíveis nos players no momento.\n"
+            "Tente outro título ou aguarde alguns instantes.",
+            parse_mode=enums.ParseMode.DISABLED,
         )
         track_message(user_id, message.chat.id, sent.id)
         return
 
     set_user_results(user_id, available)
 
-    lines = [f"🔍 *Resultados para:* `{query}`\n"]
+    lines = [f"🔍 Resultados para: {query}\n"]
     for i, r in enumerate(available, 1):
         emoji = "📺" if r.is_series else "🎬"
-        lines.append(f"{i}. {emoji} *{esc(r.title)}* ({esc(r.release_year)}) — ⭐ {r.vote_average:.1f}")
-    lines.append("\n_Toque em um título para ver os detalhes_")
+        lines.append(f"{i}. {emoji} {r.title} ({r.release_year}) — ⭐ {r.vote_average:.1f}")
+    lines.append("\nToque em um título para ver os detalhes")
 
     sent = await message.reply(
         "\n".join(lines),
-        parse_mode=enums.ParseMode.MARKDOWN,
+        parse_mode=enums.ParseMode.DISABLED,
         reply_markup=search_result_keyboard(available),
     )
     track_message(user_id, message.chat.id, sent.id)
@@ -123,7 +123,7 @@ async def _send_trending(client: Client, message: Message, media_type: str):
     if not results:
         sent = await message.reply(
             "❌ Não foi possível carregar os dados. Tente novamente.",
-            parse_mode=enums.ParseMode.MARKDOWN,
+            parse_mode=enums.ParseMode.DISABLED,
         )
         track_message(user_id, message.chat.id, sent.id)
         return
@@ -132,7 +132,7 @@ async def _send_trending(client: Client, message: Message, media_type: str):
     if not available:
         sent = await message.reply(
             "😕 Nenhum título disponível nos players agora. Tente mais tarde.",
-            parse_mode=enums.ParseMode.MARKDOWN,
+            parse_mode=enums.ParseMode.DISABLED,
         )
         track_message(user_id, message.chat.id, sent.id)
         return
@@ -141,7 +141,7 @@ async def _send_trending(client: Client, message: Message, media_type: str):
 
     sent = await message.reply(
         format_trending_header(media_type),
-        parse_mode=enums.ParseMode.MARKDOWN,
+        parse_mode=enums.ParseMode.DISABLED,
         reply_markup=trending_keyboard(available, media_type, page=1),
     )
     track_message(user_id, message.chat.id, sent.id)
